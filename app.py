@@ -24,39 +24,49 @@ if uploaded_timecard and uploaded_tripreport:
 
     timecard_df['Driver'] = timecard_df['Employee'].str.lower().str.strip().replace(name_mapping)
 
-    # 转换时间字段
+    # 转换 Clock In / Clock Out 为 datetime
     timecard_df['Clock In DT'] = pd.to_datetime(timecard_df['Time In'], errors='coerce')
     timecard_df['Clock Out DT'] = pd.to_datetime(timecard_df['Time Out'], errors='coerce')
 
-    # 保留每位司机最早一条“完整”记录（含clock in 和 clock out）
-    complete_logs = timecard_df.dropna(subset=['Clock In DT', 'Clock Out DT']).copy()
-    complete_logs = complete_logs.sort_values(['Driver', 'Clock In DT'])
-    timecard_df = complete_logs.drop_duplicates(subset=['Driver'], keep='first').copy()
+    # 仅保留有完整 Clock In 和 Out 的记录
+    timecard_df = timecard_df.dropna(subset=['Clock In DT', 'Clock Out DT'])
 
-    # 格式化时间
+    # 每位司机仅保留第一次完整打卡记录
+    timecard_df = timecard_df.sort_values('Clock In DT').drop_duplicates(subset='Driver', keep='first')
+
+    # 计算工作时长（float 小时）
+    timecard_df['Working Hours Float'] = (timecard_df['Clock Out DT'] - timecard_df['Clock In DT']).dt.total_seconds() / 3600
+
+    # 格式化 Clock In / Out 为 HH:MM
     timecard_df['Clock In'] = timecard_df['Clock In DT'].dt.strftime('%H:%M')
     timecard_df['Clock Out'] = timecard_df['Clock Out DT'].dt.strftime('%H:%M')
 
-    # 计算工作时长（float小时数）
-    timecard_df['Working Hours Float'] = (timecard_df['Clock Out DT'] - timecard_df['Clock In DT']).dt.total_seconds() / 3600
-
-    # Trip Report drive time 转为 timedelta
+    # Trip Report 处理
+    trip_df = trip_df.dropna(subset=['Driving Duration'])
     trip_df['Drive Time'] = pd.to_timedelta(trip_df['Driving Duration'].astype(str), errors='coerce')
-    trip_df = trip_df.dropna(subset=['Drive Time'])  # 去掉无效的行
-    trip_df = trip_df.drop_duplicates(subset=['Driver'], keep='first').copy()
+    trip_df = trip_df.dropna(subset=['Drive Time'])
+    trip_df = trip_df.drop_duplicates(subset='Driver', keep='first')
 
-    # Drive Time 转 float 小时
-    trip_df['Drive Time Float'] = trip_df['Drive Time'].dt.total_seconds() / 3600
+    # 格式化 Drive Time
+    trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(
+        lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}"
+    )
 
     # 合并
-    merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time Float']], on='Driver', how='left')
-    merged['Drive Time Float'] = merged['Drive Time Float'].fillna(0)
+    merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time HHMM']], on='Driver', how='left')
 
+    # Drive Time 转 float 小时
+    merged['Drive Time Float'] = merged['Drive Time HHMM'].apply(
+        lambda x: int(x.split(':')[0]) + int(x.split(':')[1])/60 if pd.notnull(x) and x != '' else 0
+    )
+
+    # Idle Time = 工作 - 行车
     merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time Float']
 
-    def float_to_hhmm(hours_float):
+    # 转换成 H:MM 格式的函数
+    def to_hhmm(hours_float):
         try:
-            if pd.isnull(hours_float):
+            if pd.isnull(hours_float) or hours_float < 0:
                 return ''
             hours = int(hours_float)
             minutes = int(round((hours_float - hours) * 60))
@@ -64,13 +74,17 @@ if uploaded_timecard and uploaded_tripreport:
         except:
             return ''
 
-    merged['Working Hours'] = merged['Working Hours Float'].apply(float_to_hhmm)
-    merged['Drive Time'] = merged['Drive Time Float'].apply(float_to_hhmm)
-    merged['Idle Time'] = merged['Idle Time Float'].apply(float_to_hhmm)
+    # 应用转换
+    merged['Working Hours'] = merged['Working Hours Float'].apply(to_hhmm)
+    merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
 
-    display_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time', 'Idle Time']]
+    # 最终展示字段
+    display_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].rename(
+        columns={'Drive Time HHMM': 'Drive Time'}
+    )
 
     st.dataframe(display_df)
 
+    # 导出按钮
     csv = display_df.to_csv(index=False).encode('utf-8')
-    st.download_button('下载分析结果 CSV', data=csv, file_name='driver_analysis.csv', mime='text/csv')
+    st.download_button('📄 下载分析结果 CSV', data=csv, file_name='driver_analysis.csv', mime='text/csv')
