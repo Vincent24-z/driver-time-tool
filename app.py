@@ -29,6 +29,9 @@ if uploaded_timecard and uploaded_tripreport:
     timecard_df['Clock Out DT'] = pd.to_datetime(timecard_df['Time Out'], errors='coerce')
     timecard_df['Working Hours Float'] = (timecard_df['Clock Out DT'] - timecard_df['Clock In DT']).dt.total_seconds() / 3600
 
+    # 去除没有打卡记录的数据
+    timecard_df = timecard_df.dropna(subset=['Clock In DT', 'Clock Out DT'])
+
     # 格式化 Clock In 和 Clock Out 为 HH:MM
     timecard_df['Clock In'] = timecard_df['Clock In DT'].dt.strftime('%H:%M')
     timecard_df['Clock Out'] = timecard_df['Clock Out DT'].dt.strftime('%H:%M')
@@ -39,7 +42,10 @@ if uploaded_timecard and uploaded_tripreport:
         lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}" if pd.notnull(x) else ''
     )
 
+    # 合并并去除重复司机，仅保留第一次出现的打卡记录
+    timecard_df = timecard_df.drop_duplicates(subset='Driver', keep='first')
     merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time HHMM']], on='Driver', how='left')
+
     merged['Drive Time Float'] = merged['Drive Time HHMM'].apply(
         lambda x: int(x.split(':')[0]) + int(x.split(':')[1])/60 if x else 0
     )
