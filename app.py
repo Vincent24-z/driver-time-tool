@@ -29,9 +29,9 @@ if uploaded_timecard and uploaded_tripreport:
     timecard_df['Clock Out DT'] = pd.to_datetime(timecard_df['Time Out'], errors='coerce')
     timecard_df['Date'] = timecard_df['Clock In DT'].dt.date
 
-    # 保留每位司机“有 Clock In 和 Clock Out 的任意一条记录”，优先用最新的
+    # 只保留每个司机第一条包含打卡和签退的记录（不管是哪天）
     complete_logs = timecard_df.dropna(subset=['Clock In DT', 'Clock Out DT'])
-    complete_logs = complete_logs.sort_values(['Driver', 'Date'], ascending=[True, False])
+    complete_logs = complete_logs.sort_values(['Driver', 'Date'], ascending=[True, True])
     timecard_df = complete_logs.drop_duplicates(subset='Driver', keep='first')
 
     # 格式化 Clock In 和 Clock Out 为 HH:MM
@@ -41,8 +41,7 @@ if uploaded_timecard and uploaded_tripreport:
     # 工作时长（小时浮点）
     timecard_df['Working Hours Float'] = (timecard_df['Clock Out DT'] - timecard_df['Clock In DT']).dt.total_seconds() / 3600
 
-    # Trip Report - Drive Time 处理为 HH:MM
-    trip_df = trip_df.dropna(subset=['Driving Duration'])
+    # Trip Report
     trip_df['Drive Time'] = pd.to_timedelta(trip_df['Driving Duration'].astype(str), errors='coerce')
     trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(
         lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}" if pd.notnull(x) else ''
@@ -51,14 +50,11 @@ if uploaded_timecard and uploaded_tripreport:
 
     # 合并
     merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time HHMM']], on='Driver', how='left')
-
-    # 计算 Idle Time
     merged['Drive Time Float'] = merged['Drive Time HHMM'].apply(
         lambda x: int(x.split(':')[0]) + int(x.split(':')[1])/60 if x else 0
     )
     merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time Float']
 
-    # 格式化为 HH:MM 格式
     def to_hhmm(hours_float):
         try:
             hours = int(hours_float)
@@ -70,7 +66,7 @@ if uploaded_timecard and uploaded_tripreport:
     merged['Working Hours'] = merged['Working Hours Float'].apply(to_hhmm)
     merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
 
-    # 展示结果
+    # 展示
     display_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].rename(
         columns={'Drive Time HHMM': 'Drive Time'}
     )
