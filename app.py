@@ -25,13 +25,13 @@ if uploaded_timecard and uploaded_tripreport:
     timecard_df['Driver'] = timecard_df['Employee'].str.lower().str.strip().replace(name_mapping)
 
     # 计算时长（修正）
-    timecard_df['Clock In'] = pd.to_datetime(timecard_df['Time In'], errors='coerce')
-    timecard_df['Clock Out'] = pd.to_datetime(timecard_df['Time Out'], errors='coerce')
-    timecard_df['Working Hours Float'] = (timecard_df['Clock Out'] - timecard_df['Clock In']).dt.total_seconds() / 3600
+    timecard_df['Clock In DT'] = pd.to_datetime(timecard_df['Time In'], errors='coerce')
+    timecard_df['Clock Out DT'] = pd.to_datetime(timecard_df['Time Out'], errors='coerce')
+    timecard_df['Working Hours Float'] = (timecard_df['Clock Out DT'] - timecard_df['Clock In DT']).dt.total_seconds() / 3600
 
     # 格式化 Clock In 和 Clock Out 为 HH:MM
-    timecard_df['Clock In'] = timecard_df['Clock In'].dt.strftime('%H:%M')
-    timecard_df['Clock Out'] = timecard_df['Clock Out'].dt.strftime('%H:%M')
+    timecard_df['Clock In'] = timecard_df['Clock In DT'].dt.strftime('%H:%M')
+    timecard_df['Clock Out'] = timecard_df['Clock Out DT'].dt.strftime('%H:%M')
 
     # Drive Time 转 HH:MM
     trip_df['Drive Time'] = pd.to_timedelta(trip_df['Driving Duration'].astype(str), errors='coerce')
