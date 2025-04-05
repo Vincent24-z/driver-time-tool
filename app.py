@@ -24,6 +24,11 @@ if uploaded_timecard and uploaded_tripreport:
 
     timecard_df['Driver'] = timecard_df['Employee'].str.lower().str.strip().replace(name_mapping)
 
+    # 保留每位司机仅一条打卡记录（首次有 clock in 和 clock out 的记录）
+    timecard_df = timecard_df.dropna(subset=['Time In', 'Time Out'])
+    timecard_df = timecard_df.sort_values(by=['Driver', 'Time In'])
+    timecard_df = timecard_df.drop_duplicates(subset='Driver', keep='first')
+
     # 计算时长（修正）
     timecard_df['Clock In'] = pd.to_datetime(timecard_df['Time In'], format='%H:%M:%S', errors='coerce')
     timecard_df['Clock Out'] = pd.to_datetime(timecard_df['Time Out'], format='%H:%M:%S', errors='coerce')
