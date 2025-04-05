@@ -31,7 +31,6 @@ timecard_df['Clock Out'] = pd.to_datetime(timecard_df['Time Out'], format='%H:%M
 # 计算工作时长，确保两个时间为当天的时间
 timecard_df['Working Hours'] = (timecard_df['Clock Out'] - timecard_df['Clock In']).dt.total_seconds() / 3600  # 小时
 
-
     trip_df['Drive Time'] = pd.to_timedelta(trip_df['Driving Duration'])
 
     merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time']], on='Driver', how='left')
