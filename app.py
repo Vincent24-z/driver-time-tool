@@ -10,7 +10,7 @@ if uploaded_timecard and uploaded_tripreport:
     timecard_df = pd.read_excel(uploaded_timecard)
     trip_df = pd.read_excel(uploaded_tripreport)
 
-    timecard_df = timecard_df[['Employee', 'Time In', 'Time Out']].dropna()
+    timecard_df = timecard_df[['Employee', 'Time In', 'Time Out']]
     trip_df['Driver'] = trip_df['Name'].str.split('@').str[0].str.lower().str.strip()
 
     # 名称映射
@@ -24,34 +24,37 @@ if uploaded_timecard and uploaded_tripreport:
 
     timecard_df['Driver'] = timecard_df['Employee'].str.lower().str.strip().replace(name_mapping)
 
-    # 计算时长（修正）
+    # 转换时间字段
     timecard_df['Clock In DT'] = pd.to_datetime(timecard_df['Time In'], errors='coerce')
     timecard_df['Clock Out DT'] = pd.to_datetime(timecard_df['Time Out'], errors='coerce')
-    timecard_df['Working Hours Float'] = (timecard_df['Clock Out DT'] - timecard_df['Clock In DT']).dt.total_seconds() / 3600
+    timecard_df['Date'] = timecard_df['Clock In DT'].dt.date
 
-    # 去除没有打卡记录的数据
-    timecard_df = timecard_df.dropna(subset=['Clock In DT', 'Clock Out DT'])
+    # 保留每位司机最新的“完整记录”（有 Clock In 和 Clock Out）
+    complete_logs = timecard_df.dropna(subset=['Clock In DT', 'Clock Out DT'])
+    complete_logs = complete_logs.sort_values(['Driver', 'Date'], ascending=[True, False])
+    timecard_df = complete_logs.drop_duplicates(subset=['Driver'], keep='first')
 
     # 格式化 Clock In 和 Clock Out 为 HH:MM
     timecard_df['Clock In'] = timecard_df['Clock In DT'].dt.strftime('%H:%M')
     timecard_df['Clock Out'] = timecard_df['Clock Out DT'].dt.strftime('%H:%M')
 
-    # Drive Time 转 HH:MM
+    # 工作时长（小时浮点）
+    timecard_df['Working Hours Float'] = (timecard_df['Clock Out DT'] - timecard_df['Clock In DT']).dt.total_seconds() / 3600
+
+    # Trip Report
     trip_df['Drive Time'] = pd.to_timedelta(trip_df['Driving Duration'].astype(str), errors='coerce')
     trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(
         lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}" if pd.notnull(x) else ''
     )
+    trip_df = trip_df.drop_duplicates(subset='Driver', keep='first')
 
-    # 合并并去除重复司机，仅保留第一次出现的打卡记录
-    timecard_df = timecard_df.drop_duplicates(subset='Driver', keep='first')
+    # 合并
     merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time HHMM']], on='Driver', how='left')
-
     merged['Drive Time Float'] = merged['Drive Time HHMM'].apply(
         lambda x: int(x.split(':')[0]) + int(x.split(':')[1])/60 if x else 0
     )
     merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time Float']
 
-    # 转换为 HH:MM 字符串
     def to_hhmm(hours_float):
         try:
             hours = int(hours_float)
@@ -63,11 +66,11 @@ if uploaded_timecard and uploaded_tripreport:
     merged['Working Hours'] = merged['Working Hours Float'].apply(to_hhmm)
     merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
 
+    # 展示
     display_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].rename(
         columns={'Drive Time HHMM': 'Drive Time'}
     )
     st.dataframe(display_df)
 
-    export_df = display_df
-    csv = export_df.to_csv(index=False).encode('utf-8')
+    csv = display_df.to_csv(index=False).encode('utf-8')
     st.download_button('下载分析结果 CSV', data=csv, file_name='driver_analysis.csv', mime='text/csv')
