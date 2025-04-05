@@ -24,34 +24,41 @@ if uploaded_timecard and uploaded_tripreport:
 
     timecard_df['Driver'] = timecard_df['Employee'].str.lower().str.strip().replace(name_mapping)
 
-    # 计算时长（修正）
+    # 计算工作时长
     timecard_df['Clock In'] = pd.to_datetime(timecard_df['Time In'], format='%H:%M:%S', errors='coerce')
     timecard_df['Clock Out'] = pd.to_datetime(timecard_df['Time Out'], format='%H:%M:%S', errors='coerce')
     timecard_df['Working Hours Float'] = (timecard_df['Clock Out'] - timecard_df['Clock In']).dt.total_seconds() / 3600
 
-    trip_df['Drive Time'] = pd.to_timedelta(trip_df['Driving Duration'].apply(lambda x: x.strftime('%H:%M:%S') if pd.notnull(x) else pd.NaT))
-    trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}" if pd.notnull(x) else '')
+    # Drive Time 转 HH:MM
+    trip_df['Drive Time'] = pd.to_timedelta(trip_df['Driving Duration'].astype(str), errors='coerce')
+    trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(
+        lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}" if pd.notnull(x) else ''
+    )
 
+    # 合并并计算空闲时间
     merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time HHMM']], on='Driver', how='left')
-    merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time HHMM'].apply(lambda x: int(x.split(':')[0]) + int(x.split(':')[1])/60 if x else 0)
+    merged['Drive Time Float'] = merged['Drive Time HHMM'].apply(
+        lambda x: int(x.split(':')[0]) + int(x.split(':')[1]) / 60 if x else 0
+    )
+    merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time Float']
 
+    # 转换为 HH:MM 字符串
     def to_hhmm(hours_float):
         hours = int(hours_float)
         minutes = int((hours_float - hours) * 60)
         return f"{hours}:{minutes:02d}"
 
-    merged['Clock In'] = pd.to_datetime(merged['Clock In']).dt.strftime('%H:%M:%S')
-    merged['Clock Out'] = pd.to_datetime(merged['Clock Out']).dt.strftime('%H:%M:%S')
+    merged['Clock In'] = merged['Clock In'].dt.strftime('%H:%M:%S')
+    merged['Clock Out'] = merged['Clock Out'].dt.strftime('%H:%M:%S')
     merged['Working Hours'] = merged['Working Hours Float'].apply(to_hhmm)
     merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
 
-    st.dataframe(merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].rename(columns={
-        'Drive Time HHMM': 'Drive Time'
-    }))
+    # 展示结果
+    display_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].rename(
+        columns={'Drive Time HHMM': 'Drive Time'}
+    )
+    st.dataframe(display_df)
 
-    # 导出结果
-    export_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].rename(columns={
-        'Drive Time HHMM': 'Drive Time'
-    })
-    csv = export_df.to_csv(index=False).encode('utf-8')
+    # 导出按钮
+    csv = display_df.to_csv(index=False).encode('utf-8')
     st.download_button('下载分析结果 CSV', data=csv, file_name='driver_analysis.csv', mime='text/csv')
