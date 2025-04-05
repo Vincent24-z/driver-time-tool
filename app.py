@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-st.title('🚚 司机每日工作/行车/空闲时间分析')
+st.title('🚚 每日工作/行车/空闲时间分析')
 
 uploaded_timecard = st.file_uploader('上传员工打卡记录', type=['xlsx'])
 uploaded_tripreport = st.file_uploader('上传行车报告 Trip Report', type=['xlsx'])
