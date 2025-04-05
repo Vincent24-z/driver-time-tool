@@ -28,33 +28,33 @@ if uploaded_timecard and uploaded_tripreport:
     timecard_df['Clock In DT'] = pd.to_datetime(timecard_df['Time In'], errors='coerce')
     timecard_df['Clock Out DT'] = pd.to_datetime(timecard_df['Time Out'], errors='coerce')
 
-    # 只保留每个司机最早一条包含 Clock In 和 Clock Out 的记录
-    complete_logs = timecard_df.dropna(subset=['Clock In DT', 'Clock Out DT'])
-    complete_logs = complete_logs.sort_values(['Driver', 'Clock In DT'], ascending=[True, True])
-    timecard_df = complete_logs.drop_duplicates(subset='Driver', keep='first')
+    # 保留每位司机最早一条“完整”记录（含clock in 和 clock out）
+    complete_logs = timecard_df.dropna(subset=['Clock In DT', 'Clock Out DT']).copy()
+    complete_logs = complete_logs.sort_values(['Driver', 'Clock In DT'])
+    timecard_df = complete_logs.drop_duplicates(subset=['Driver'], keep='first').copy()
 
-    # 格式化 Clock In 和 Clock Out 为 HH:MM
+    # 格式化时间
     timecard_df['Clock In'] = timecard_df['Clock In DT'].dt.strftime('%H:%M')
     timecard_df['Clock Out'] = timecard_df['Clock Out DT'].dt.strftime('%H:%M')
 
-    # 工作时长（小时浮点）
+    # 计算工作时长（float小时数）
     timecard_df['Working Hours Float'] = (timecard_df['Clock Out DT'] - timecard_df['Clock In DT']).dt.total_seconds() / 3600
 
-    # Trip Report
+    # Trip Report drive time 转为 timedelta
     trip_df['Drive Time'] = pd.to_timedelta(trip_df['Driving Duration'].astype(str), errors='coerce')
-    trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(
-        lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}" if pd.notnull(x) else ''
-    )
-    trip_df = trip_df.drop_duplicates(subset='Driver', keep='first')
+    trip_df = trip_df.dropna(subset=['Drive Time'])  # 去掉无效的行
+    trip_df = trip_df.drop_duplicates(subset=['Driver'], keep='first').copy()
+
+    # Drive Time 转 float 小时
+    trip_df['Drive Time Float'] = trip_df['Drive Time'].dt.total_seconds() / 3600
 
     # 合并
-    merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time HHMM']], on='Driver', how='left')
-    merged['Drive Time Float'] = merged['Drive Time HHMM'].apply(
-        lambda x: int(x.split(':')[0]) + int(x.split(':')[1])/60 if x else 0
-    )
+    merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time Float']], on='Driver', how='left')
+    merged['Drive Time Float'] = merged['Drive Time Float'].fillna(0)
+
     merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time Float']
 
-    def to_hhmm(hours_float):
+    def float_to_hhmm(hours_float):
         try:
             if pd.isnull(hours_float):
                 return ''
@@ -64,13 +64,12 @@ if uploaded_timecard and uploaded_tripreport:
         except:
             return ''
 
-    merged['Working Hours'] = merged['Working Hours Float'].apply(to_hhmm)
-    merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
+    merged['Working Hours'] = merged['Working Hours Float'].apply(float_to_hhmm)
+    merged['Drive Time'] = merged['Drive Time Float'].apply(float_to_hhmm)
+    merged['Idle Time'] = merged['Idle Time Float'].apply(float_to_hhmm)
 
-    # 展示
-    display_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].rename(
-        columns={'Drive Time HHMM': 'Drive Time'}
-    )
+    display_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time', 'Idle Time']]
+
     st.dataframe(display_df)
 
     csv = display_df.to_csv(index=False).encode('utf-8')
