@@ -27,11 +27,10 @@ if uploaded_timecard and uploaded_tripreport:
     # 转换时间字段
     timecard_df['Clock In DT'] = pd.to_datetime(timecard_df['Time In'], errors='coerce')
     timecard_df['Clock Out DT'] = pd.to_datetime(timecard_df['Time Out'], errors='coerce')
-    timecard_df['Date'] = timecard_df['Clock In DT'].dt.date
 
-    # 只保留每个司机第一条包含打卡和签退的记录（不管是哪天）
+    # 只保留每个司机最早一条包含 Clock In 和 Clock Out 的记录
     complete_logs = timecard_df.dropna(subset=['Clock In DT', 'Clock Out DT'])
-    complete_logs = complete_logs.sort_values(['Driver', 'Date'], ascending=[True, True])
+    complete_logs = complete_logs.sort_values(['Driver', 'Clock In DT'], ascending=[True, True])
     timecard_df = complete_logs.drop_duplicates(subset='Driver', keep='first')
 
     # 格式化 Clock In 和 Clock Out 为 HH:MM
@@ -57,6 +56,8 @@ if uploaded_timecard and uploaded_tripreport:
 
     def to_hhmm(hours_float):
         try:
+            if pd.isnull(hours_float):
+                return ''
             hours = int(hours_float)
             minutes = int(round((hours_float - hours) * 60))
             return f"{hours}:{minutes:02d}"
