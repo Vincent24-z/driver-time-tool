@@ -34,7 +34,7 @@ if uploaded_timecard and uploaded_tripreport:
 
 
     merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time']], on='Driver', how='left')
-    merged['Idle Time'] = merged['Working Hours'] - merged['Drive Time']
+    merged['Idle Time'] = merged['Working Hours'] - merged['Drive Time'].dt.total_seconds() / 3600
 
     st.dataframe(merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time', 'Idle Time']])
 
