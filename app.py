@@ -29,7 +29,8 @@ if uploaded_timecard and uploaded_tripreport:
     timecard_df['Clock Out'] = pd.to_datetime(timecard_df['Time Out'], format='%H:%M:%S', errors='coerce')
     timecard_df['Working Hours'] = (timecard_df['Clock Out'] - timecard_df['Clock In']).dt.total_seconds() / 3600
 
-    trip_df['Drive Time'] = pd.to_timedelta(trip_df['Driving Duration'], errors='coerce').dt.total_seconds() / 3600
+    trip_df['Drive Time'] = pd.to_timedelta(trip_df['Driving Duration'].astype(str))
+
 
     merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time']], on='Driver', how='left')
     merged['Idle Time'] = merged['Working Hours'] - merged['Drive Time']
