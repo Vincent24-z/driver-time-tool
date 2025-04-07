@@ -22,6 +22,7 @@ def to_hhmm(hours_float):
     return f"{hours}:{minutes:02d}"
 
 def extract_actual_out(df):
+    df = df.sort_values(by='Start Date')
     home_zone_indices = df[df['Stop Zone Types'].astype(str).str.lower().str.contains('home zone')].index
     if not home_zone_indices.empty:
         next_idx = home_zone_indices[0] + 1
@@ -82,19 +83,14 @@ if uploaded_timecard and uploaded_tripreport:
 
         trip_df['Drive Time'] = trip_df[duration_col].apply(extract_duration)
         trip_df = trip_df.dropna(subset=['Drive Time'])
-        trip_df = trip_df.drop_duplicates(subset='Driver')
-        trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}")
 
-        # 提取每位司机的 Actual Out
         actual_outs_series = trip_df.groupby('Driver').apply(extract_actual_out)
+        actual_outs_df = actual_outs_series.reset_index(name='Actual Out')
 
-        if isinstance(actual_outs_series, pd.Series):
-            actual_outs_df = actual_outs_series.reset_index()
-            actual_outs_df.columns = ['Driver', 'Actual Out']
-        else:
-            actual_outs_df = actual_outs_series.rename(columns={0: 'Actual Out'})
+        trip_summary = trip_df.groupby('Driver')['Drive Time'].sum().reset_index()
+        trip_summary['Drive Time HHMM'] = trip_summary['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}")
 
-        merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time', 'Drive Time HHMM']], on='Driver', how='left')
+        merged = pd.merge(timecard_df, trip_summary, on='Driver', how='left')
         merged = pd.merge(merged, actual_outs_df, on='Driver', how='left')
         merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time'].dt.total_seconds() / 3600
         merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
