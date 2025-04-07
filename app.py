@@ -1,8 +1,8 @@
 import pandas as pd
 
 # 读取上传的文件为 DataFrame
-trip_report_df = pd.read_excel(trip_file)      # 行车报告
-timecard_df = pd.read_excel(timecard_file)     # 打卡记录
+trip_report_df = pd.read_excel(uploaded_tripreport)      # 行车报告
+timecard_df = pd.read_excel(uploaded_timecard)           # 打卡记录
 
 # 如果任何一个 DataFrame 为空，提前退出避免后续处理出错
 if trip_report_df.empty or timecard_df.empty:
