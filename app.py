@@ -1,11 +1,18 @@
 import streamlit as st
 import pandas as pd
+import os
 import re
+from datetime import datetime
+import matplotlib.pyplot as plt
 
-st.title('🚚 Driver daily working/driving/idle time analysis')
+st.title('🚚 司机每日工作/行车/空闲时间分析')
 
-uploaded_timecard = st.file_uploader('Upload employee Time card log records ', type=['xlsx'])
-uploaded_tripreport = st.file_uploader('Upload driving report', type=['xlsx'])
+uploaded_timecard = st.file_uploader('上传员工打卡记录', type=['xlsx'])
+uploaded_tripreport = st.file_uploader('上传行车报告 Trip Report', type=['xlsx'])
+
+# 存储数据的文件夹路径
+data_dir = "driver_history"
+os.makedirs(data_dir, exist_ok=True)
 
 def to_hhmm(hours_float):
     if pd.isnull(hours_float):
@@ -22,7 +29,6 @@ if uploaded_timecard and uploaded_tripreport:
     timecard_df = timecard_df[['Employee', 'Time In', 'Time Out']].dropna(subset=['Time In', 'Time Out'])
     timecard_df['Driver'] = timecard_df['Employee'].str.lower().str.strip()
 
-    # 显式名称映射
     name_mapping = {
         'angel r': 'angel.r', 'daniel': 'daniel.wang', 'daury': 'daury.fabian',
         'david': 'david.chen', 'jarlin': 'jarlin.reyes', 'jorjan': 'jordan.hernandez',
@@ -32,12 +38,10 @@ if uploaded_timecard and uploaded_tripreport:
     }
     timecard_df['Driver'] = timecard_df['Driver'].replace(name_mapping)
 
-    # 明确解析时间格式
     timecard_df['Clock In'] = pd.to_datetime(timecard_df['Time In'], format='%H:%M:%S', errors='coerce')
     timecard_df['Clock Out'] = pd.to_datetime(timecard_df['Time Out'], format='%H:%M:%S', errors='coerce')
     timecard_df = timecard_df.dropna(subset=['Clock In', 'Clock Out'])
 
-    # 只保留一次打卡记录（假设你已经手动整理好了）
     timecard_df = timecard_df.drop_duplicates(subset='Driver', keep='first')
 
     timecard_df['Working Hours Float'] = (timecard_df['Clock Out'] - timecard_df['Clock In']).dt.total_seconds() / 3600
@@ -45,7 +49,6 @@ if uploaded_timecard and uploaded_tripreport:
     timecard_df['Clock In'] = timecard_df['Clock In'].dt.strftime('%H:%M:%S')
     timecard_df['Clock Out'] = timecard_df['Clock Out'].dt.strftime('%H:%M:%S')
 
-    # 行车报告处理
     trip_df['Driver'] = trip_df['Name'].str.split('@').str[0].str.lower().str.strip()
     trip_df = trip_df[trip_df['Driver'].isin(timecard_df['Driver'])]
 
@@ -61,10 +64,8 @@ if uploaded_timecard and uploaded_tripreport:
     trip_df['Drive Time'] = trip_df['Driving Duration'].apply(extract_duration)
     trip_df = trip_df.dropna(subset=['Drive Time'])
     trip_df = trip_df.drop_duplicates(subset='Driver')
-
     trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}")
 
-    # 合并数据
     merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time', 'Drive Time HHMM']], on='Driver', how='left')
     merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time'].dt.total_seconds() / 3600
     merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
@@ -72,6 +73,34 @@ if uploaded_timecard and uploaded_tripreport:
     output_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].copy()
     output_df.columns = ['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time', 'Idle Time']
 
+    # 保存历史记录
+    today_str = datetime.today().strftime('%Y-%m-%d')
+    output_path = os.path.join(data_dir, f"{today_str}_driver_analysis.csv")
+    output_df.to_csv(output_path, index=False)
+
+    st.success(f"分析结果已保存为：{output_path}")
     st.dataframe(output_df)
     csv = output_df.to_csv(index=False)
     st.download_button('下载分析结果 CSV', data=csv, file_name='driver_analysis.csv')
+
+    # 图表分析按钮
+    if st.button("📊 展示司机时间趋势图"):
+        all_files = [f for f in os.listdir(data_dir) if f.endswith("_driver_analysis.csv")]
+        dfs = []
+        for f in all_files:
+            df = pd.read_csv(os.path.join(data_dir, f))
+            df['Date'] = f.split('_')[0]
+            dfs.append(df)
+        if dfs:
+            history_df = pd.concat(dfs)
+            fig, ax = plt.subplots(figsize=(10, 6))
+            for driver, group in history_df.groupby("Driver"):
+                group_sorted = group.sort_values('Date')
+                ax.plot(group_sorted['Date'], group_sorted['Working Hours'], label=driver)
+            ax.set_title("各司机每日工作时长趋势")
+            ax.set_ylabel("工作时长 (HH:MM)")
+            ax.set_xlabel("日期")
+            ax.legend()
+            st.pyplot(fig)
+        else:
+            st.warning("暂无历史记录可供分析。")
