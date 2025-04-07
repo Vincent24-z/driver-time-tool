@@ -1,13 +1,9 @@
-import streamlit as st
+""import streamlit as st
 import pandas as pd
 import os
 import re
 from datetime import datetime
 import matplotlib.pyplot as plt
-import matplotlib
-
-# 设置字体防止图表乱码
-matplotlib.rcParams['font.family'] = 'DejaVuSans'
 
 st.title('🚚 司机每日工作/行车/空闲时间分析')
 
@@ -57,52 +53,50 @@ if uploaded_timecard and uploaded_tripreport:
         if not potential_cols:
             st.error("❌ 无法识别司机名称列（应包含关键词 'name'、'email' 或 'driver'），请检查行车报告文件格式。")
             st.stop()
+        else:
+            email_col = potential_cols[0]
+            trip_df['Driver'] = trip_df[email_col].astype(str).str.split('@').str[0].str.lower().str.strip()
+            trip_df = trip_df[trip_df['Driver'].isin(timecard_df['Driver'])]
 
-        email_col = potential_cols[0]
-        trip_df['Driver'] = trip_df[email_col].astype(str).str.split('@').str[0].str.lower().str.strip()
-        trip_df = trip_df[trip_df['Driver'].isin(timecard_df['Driver'])]
+            # 自动识别 Driving Duration 列名
+            duration_cols = [col for col in trip_df.columns if 'duration' in col.lower()]
+            if not duration_cols:
+                st.error("❌ 无法识别行车时间列（应包含关键词 'duration'），请检查行车报告文件格式。")
+                st.stop()
+            duration_col = duration_cols[0]
 
-        # 自动识别 Driving Duration 列名
-        duration_cols = [col for col in trip_df.columns if 'duration' in col.lower()]
-        if not duration_cols:
-            st.error("❌ 无法识别行车时间列（应包含关键词 'duration'），请检查行车报告文件格式。")
-            st.stop()
-
-        duration_col = duration_cols[0]
-
-        def extract_duration(duration):
-            if pd.isnull(duration):
+            def extract_duration(duration):
+                if pd.isnull(duration):
+                    return pd.NaT
+                match = re.search(r'(\\d+):(\\d+)', str(duration))
+                if match:
+                    h, m = int(match.group(1)), int(match.group(2))
+                    return pd.to_timedelta(f"{h}:{m}:00")
                 return pd.NaT
-            match = re.search(r'(\d+):(\d+)', str(duration))
-            if match:
-                h, m = int(match.group(1)), int(match.group(2))
-                return pd.to_timedelta(f"{h}:{m}:00")
-            return pd.NaT
 
-        trip_df['Drive Time'] = trip_df[duration_col].apply(extract_duration)
-        trip_df = trip_df.dropna(subset=['Drive Time'])
-        trip_df = trip_df.drop_duplicates(subset='Driver')
-        trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}")
+            trip_df['Drive Time'] = trip_df[duration_col].apply(extract_duration)
+            trip_df = trip_df.dropna(subset=['Drive Time'])
+            trip_df = trip_df.drop_duplicates(subset='Driver')
+            trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}")
 
-        merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time', 'Drive Time HHMM']], on='Driver', how='left')
-        merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time'].dt.total_seconds() / 3600
-        merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
+            merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time', 'Drive Time HHMM']], on='Driver', how='left')
+            merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time'].dt.total_seconds() / 3600
+            merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
 
-        output_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].copy()
-        output_df.columns = ['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time', 'Idle Time']
+            output_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].copy()
+            output_df.columns = ['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time', 'Idle Time']
 
-        today_str = datetime.today().strftime('%Y-%m-%d')
-        output_path = os.path.join(data_dir, f"{today_str}_driver_analysis.csv")
-        if not os.path.exists(output_path):
-            output_df.to_csv(output_path, index=False)
+            today_str = datetime.today().strftime('%Y-%m-%d')
+            output_path = os.path.join(data_dir, f"{today_str}_driver_analysis.csv")
+            if not os.path.exists(output_path):
+                output_df.to_csv(output_path, index=False)
 
-        st.session_state.output_df = output_df
-        st.success(f"分析结果已保存为：{output_path}")
-        st.dataframe(output_df)
-        csv = output_df.to_csv(index=False)
-        st.download_button('下载分析结果 CSV', data=csv, file_name='driver_analysis.csv')
+            st.success(f"分析结果已保存为：{output_path}")
+            st.dataframe(output_df)
+            csv = output_df.to_csv(index=False)
+            st.download_button('下载分析结果 CSV', data=csv, file_name='driver_analysis.csv')
 
-# 图表按钮
+# 图表按钮（不依赖上传文件）
 st.markdown("---")
 st.header("📊 查看历史趋势图")
 if st.button("展示司机时间趋势图"):
@@ -119,13 +113,10 @@ if st.button("展示司机时间趋势图"):
             fig, ax = plt.subplots(figsize=(10, 5))
             for driver, group in history_df.groupby("Driver"):
                 group_sorted = group.sort_values('Date')
-                try:
-                    y = group_sorted[metric].apply(lambda x: int(x.split(":"))[0] + int(x.split(":"))[1] / 60 if pd.notnull(x) else None)
-                    ax.plot(group_sorted['Date'], y, label=driver)
-                except Exception:
-                    continue
-            ax.set_title(f"{metric} 趋势（小时）")
-            ax.set_ylabel("小时")
+                y = group_sorted[metric].apply(lambda x: int(x.split(":")[0]) + int(x.split(":")[1])/60 if pd.notnull(x) else None)
+                ax.plot(group_sorted['Date'], y, label=driver)
+            ax.set_title(f"各司机每日 {metric} 趋势")
+            ax.set_ylabel(f"{metric} (小时)")
             ax.set_xlabel("日期")
             ax.legend()
             st.pyplot(fig)
