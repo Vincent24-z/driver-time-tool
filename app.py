@@ -83,8 +83,9 @@ if uploaded_timecard and uploaded_tripreport:
         trip_df['Drive Time'] = trip_df[duration_col].apply(extract_duration)
         trip_df = trip_df.dropna(subset=['Drive Time'])
 
-        actual_outs_series = trip_df.groupby('Driver').apply(lambda df: extract_actual_out(df)).reset_index(drop=True)
-        actual_outs_df = pd.DataFrame({'Driver': trip_df['Driver'].unique(), 'Actual Out': actual_outs_series})
+        actual_outs_series = trip_df.groupby('Driver').apply(lambda df: extract_actual_out(df))
+        actual_outs_df = actual_outs_series.reset_index()
+        actual_outs_df.columns = ['Driver', 'Actual Out']
 
         trip_summary = trip_df.groupby('Driver')['Drive Time'].sum().reset_index()
         trip_summary['Drive Time HHMM'] = trip_summary['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}")
