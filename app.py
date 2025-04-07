@@ -32,14 +32,14 @@ if uploaded_timecard and uploaded_tripreport:
 
     timecard_df['Driver'] = timecard_df['Employee'].str.lower().str.strip().replace(name_mapping)
 
-    # 转换时间
+    # 转换时间格式，只保留 HH:MM:SS
     timecard_df['Clock In'] = pd.to_datetime(timecard_df['Time In'], errors='coerce').dt.strftime('%H:%M:%S')
     timecard_df['Clock Out'] = pd.to_datetime(timecard_df['Time Out'], errors='coerce').dt.strftime('%H:%M:%S')
 
     # 去除没有有效 Clock In 或 Clock Out 的记录
     valid_timecard_df = timecard_df.dropna(subset=['Clock In', 'Clock Out'])
 
-    # 解析为 datetime 格式用于计算
+    # 用于计算时间差
     timecard_dt = valid_timecard_df.copy()
     timecard_dt['Clock In'] = pd.to_datetime(timecard_dt['Clock In'], format='%H:%M:%S')
     timecard_dt['Clock Out'] = pd.to_datetime(timecard_dt['Clock Out'], format='%H:%M:%S')
@@ -48,7 +48,9 @@ if uploaded_timecard and uploaded_tripreport:
     timecard_dt['Working Hours Float'] = (timecard_dt['Clock Out'] - timecard_dt['Clock In']).dt.total_seconds() / 3600
     timecard_dt['Working Hours'] = timecard_dt['Working Hours Float'].apply(to_hhmm)
 
-    # 处理 Drive Time
+    # 清洗 Driving Duration 字段
+    trip_df['Driving Duration'] = trip_df['Driving Duration'].astype(str).str.strip()
+    trip_df = trip_df[trip_df['Driving Duration'].str.match(r'^\d{1,2}:\d{2}:\d{2}$', na=False)]
     trip_df['Drive Time'] = pd.to_timedelta(trip_df['Driving Duration'], errors='coerce')
     trip_df = trip_df.dropna(subset=['Drive Time'])
     trip_df = trip_df.drop_duplicates(subset='Driver')
