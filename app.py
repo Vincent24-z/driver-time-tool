@@ -49,11 +49,13 @@ if uploaded_timecard and uploaded_tripreport:
         timecard_df['Clock Out'] = timecard_df['Clock Out'].dt.strftime('%H:%M:%S')
 
         # 自动匹配含名称的列
-        email_col = next((col for col in trip_df.columns if 'name' in col.lower() or 'email' in col.lower()), None)
-        if email_col is None:
-            st.error("找不到包含司机名称的列，请确认行车报告中包含类似 'Name' 或 'Email' 的列。")
+        potential_cols = [col for col in trip_df.columns if any(key in col.lower() for key in ['name', 'email', 'driver'])]
+        if not potential_cols:
+            st.error("❌ 无法识别司机名称列（应包含关键词 'name'、'email' 或 'driver'），请检查行车报告文件格式。")
+            st.stop()
         else:
-            trip_df['Driver'] = trip_df[email_col].str.split('@').str[0].str.lower().str.strip()
+            email_col = potential_cols[0]
+            trip_df['Driver'] = trip_df[email_col].astype(str).str.split('@').str[0].str.lower().str.strip()
             trip_df = trip_df[trip_df['Driver'].isin(timecard_df['Driver'])]
 
             def extract_duration(duration):
