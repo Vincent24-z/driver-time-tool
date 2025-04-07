@@ -56,7 +56,6 @@ if uploaded_timecard and uploaded_tripreport:
         timecard_df['Clock In'] = timecard_df['Clock In'].dt.strftime('%H:%M:%S')
         timecard_df['Clock Out'] = timecard_df['Clock Out'].dt.strftime('%H:%M:%S')
 
-        # 自动匹配含名称的列
         potential_cols = [col for col in trip_df.columns if any(key in col.lower() for key in ['name', 'email', 'driver'])]
         if not potential_cols:
             st.error("❌ 无法识别司机名称列（应包含关键词 'name'、'email' 或 'driver'），请检查行车报告文件格式。")
@@ -85,7 +84,6 @@ if uploaded_timecard and uploaded_tripreport:
         trip_df = trip_df.drop_duplicates(subset='Driver')
         trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}")
 
-        # 提取每位司机的 Actual Out
         actual_outs_series = trip_df.groupby('Driver').apply(extract_actual_out)
         actual_outs_df = actual_outs_series.reset_index()
         actual_outs_df.columns = ['Driver', 'Actual Out']
