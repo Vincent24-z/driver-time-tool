@@ -94,3 +94,16 @@ if uploaded_timecard and uploaded_tripreport:
         merged = pd.merge(merged, actual_outs_df, on='Driver', how='left')
         merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time'].dt.total_seconds() / 3600
         merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
+
+        output_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time', 'Actual Out']].copy()
+        output_df.columns = ['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time', 'Idle Time', 'Actual Out']
+
+        today_str = datetime.today().strftime('%Y-%m-%d')
+        output_path = os.path.join(data_dir, f"{today_str}_driver_analysis.csv")
+        if not os.path.exists(output_path):
+            output_df.to_csv(output_path, index=False)
+
+        st.success(f"分析结果已保存为：{output_path}")
+        st.dataframe(output_df)
+        csv = output_df.to_csv(index=False)
+        st.download_button('下载分析结果 CSV', data=csv, file_name='driver_analysis.csv')
