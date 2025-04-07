@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import re
 
-st.title('🚚 司机每日工作/行车/空闲时间分析')
+st.title('🚚 Driver daily working/driving/idle time analysis')
 
-uploaded_timecard = st.file_uploader('上传员工打卡记录', type=['xlsx'])
-uploaded_tripreport = st.file_uploader('上传行车报告 Trip Report', type=['xlsx'])
+uploaded_timecard = st.file_uploader('Upload employee Time card log records ', type=['xlsx'])
+uploaded_tripreport = st.file_uploader('Upload driving report', type=['xlsx'])
 
 def to_hhmm(hours_float):
     if pd.isnull(hours_float):
