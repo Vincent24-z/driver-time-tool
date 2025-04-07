@@ -21,6 +21,14 @@ def to_hhmm(hours_float):
     minutes = int(round((hours_float - hours) * 60))
     return f"{hours}:{minutes:02d}"
 
+def extract_actual_out(df):
+    if 'Stop Zone Types' in df.columns and 'Start Date' in df.columns:
+        df = df.reset_index(drop=True)
+        for idx in df.index:
+            if str(df.loc[idx, 'Stop Zone Types']).strip().lower() == 'home zone' and idx + 1 < len(df):
+                return df.loc[idx + 1, 'Start Date']
+    return None
+
 if uploaded_timecard and uploaded_tripreport:
     if st.button("📊 分析数据"):
         timecard_df = pd.read_excel(uploaded_timecard)
@@ -48,7 +56,6 @@ if uploaded_timecard and uploaded_tripreport:
         timecard_df['Clock In'] = timecard_df['Clock In'].dt.strftime('%H:%M:%S')
         timecard_df['Clock Out'] = timecard_df['Clock Out'].dt.strftime('%H:%M:%S')
 
-        # 自动匹配含名称的列
         potential_cols = [col for col in trip_df.columns if any(key in col.lower() for key in ['name', 'email', 'driver'])]
         if not potential_cols:
             st.error("❌ 无法识别司机名称列（应包含关键词 'name'、'email' 或 'driver'），请检查行车报告文件格式。")
@@ -74,29 +81,16 @@ if uploaded_timecard and uploaded_tripreport:
 
         trip_df['Drive Time'] = trip_df[duration_col].apply(extract_duration)
         trip_df = trip_df.dropna(subset=['Drive Time'])
+        trip_df = trip_df.drop_duplicates(subset='Driver')
         trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}")
 
-        # 计算每位司机的总 Driving Duration
-        total_drive = trip_df.groupby('Driver')['Drive Time'].sum().reset_index()
+        actual_outs = trip_df.groupby('Driver').apply(extract_actual_out).reset_index()
+        actual_outs.columns = ['Driver', 'Actual Out']
 
-        # 提取 Actual Out 时间（Home zone 后一行的 Start Date）
-        actual_out_list = []
-        for driver in trip_df['Driver'].unique():
-            df_driver = trip_df[trip_df['Driver'] == driver].reset_index(drop=True)
-            idx_list = df_driver[df_driver['Stop Zone Types'].str.lower().str.contains('home', na=False)].index.tolist()
-            if idx_list:
-                idx = idx_list[0] + 1
-                if idx < len(df_driver):
-                    actual_out = df_driver.loc[idx, 'Start Date']
-                    actual_out_list.append({'Driver': driver, 'Actual Out': actual_out})
-        actual_out_df = pd.DataFrame(actual_out_list)
+        merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time', 'Drive Time HHMM']], on='Driver', how='left')
+        merged = pd.merge(merged, actual_outs, on='Driver', how='left')
 
-        trip_df = trip_df.drop_duplicates(subset='Driver')
-        trip_df = pd.merge(trip_df, total_drive, on='Driver', suffixes=('', '_Total'))
-        trip_df = pd.merge(trip_df, actual_out_df, on='Driver', how='left')
-
-        merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time_Total', 'Drive Time HHMM', 'Actual Out']], on='Driver', how='left')
-        merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time_Total'].dt.total_seconds() / 3600
+        merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time'].dt.total_seconds() / 3600
         merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
 
         output_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time', 'Actual Out']].copy()
