@@ -4,8 +4,12 @@ matplotlib.rcParams['font.sans-serif'] = ['Arial']  # 避免乱码
 matplotlib.rcParams['axes.unicode_minus'] = False   # 修复负号乱码
 
 # 分析后保持结果（不被刷新清除）
-if "output_df" not in st.session_state:
-    st.session_state.output_df = None
+if st.session_state.get("output_df") is not None:
+    st.subheader("📋 分析结果")
+    st.dataframe(st.session_state.output_df)
+    csv = st.session_state.output_df.to_csv(index=False)
+    st.download_button('下载分析结果 CSV', data=csv, file_name='driver_analysis.csv')
+
 
 # 保存分析数据
 if uploaded_timecard and uploaded_tripreport:
