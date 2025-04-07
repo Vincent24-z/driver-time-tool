@@ -41,7 +41,6 @@ if uploaded_timecard and uploaded_tripreport:
     timecard_df['Clock In'] = pd.to_datetime(timecard_df['Time In'], format='%H:%M:%S', errors='coerce')
     timecard_df['Clock Out'] = pd.to_datetime(timecard_df['Time Out'], format='%H:%M:%S', errors='coerce')
     timecard_df = timecard_df.dropna(subset=['Clock In', 'Clock Out'])
-
     timecard_df = timecard_df.drop_duplicates(subset='Driver', keep='first')
 
     timecard_df['Working Hours Float'] = (timecard_df['Clock Out'] - timecard_df['Clock In']).dt.total_seconds() / 3600
@@ -73,10 +72,11 @@ if uploaded_timecard and uploaded_tripreport:
     output_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].copy()
     output_df.columns = ['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time', 'Idle Time']
 
-    # 保存历史记录
+    # 保存历史记录（避免重复覆盖）
     today_str = datetime.today().strftime('%Y-%m-%d')
     output_path = os.path.join(data_dir, f"{today_str}_driver_analysis.csv")
-    output_df.to_csv(output_path, index=False)
+    if not os.path.exists(output_path):
+        output_df.to_csv(output_path, index=False)
 
     st.success(f"分析结果已保存为：{output_path}")
     st.dataframe(output_df)
@@ -93,14 +93,16 @@ if uploaded_timecard and uploaded_tripreport:
             dfs.append(df)
         if dfs:
             history_df = pd.concat(dfs)
-            fig, ax = plt.subplots(figsize=(10, 6))
-            for driver, group in history_df.groupby("Driver"):
-                group_sorted = group.sort_values('Date')
-                ax.plot(group_sorted['Date'], group_sorted['Working Hours'], label=driver)
-            ax.set_title("各司机每日工作时长趋势")
-            ax.set_ylabel("工作时长 (HH:MM)")
-            ax.set_xlabel("日期")
-            ax.legend()
-            st.pyplot(fig)
+            for metric in ['Working Hours', 'Drive Time', 'Idle Time']:
+                fig, ax = plt.subplots(figsize=(10, 5))
+                for driver, group in history_df.groupby("Driver"):
+                    group_sorted = group.sort_values('Date')
+                    y = group_sorted[metric].apply(lambda x: int(x.split(":")[0]) + int(x.split(":")[1])/60 if pd.notnull(x) else None)
+                    ax.plot(group_sorted['Date'], y, label=driver)
+                ax.set_title(f"各司机每日{metric}趋势")
+                ax.set_ylabel(f"{metric} (小时)")
+                ax.set_xlabel("日期")
+                ax.legend()
+                st.pyplot(fig)
         else:
             st.warning("暂无历史记录可供分析。")
