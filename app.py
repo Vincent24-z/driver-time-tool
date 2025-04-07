@@ -87,11 +87,11 @@ if uploaded_timecard and uploaded_tripreport:
 
         # 提取每位司机的 Actual Out
         actual_outs_series = trip_df.groupby('Driver').apply(extract_actual_out)
-        actual_outs = actual_outs_series.reset_index()
-        actual_outs.columns = ['Driver', 'Actual Out']
+        actual_outs_df = actual_outs_series.reset_index()
+        actual_outs_df.columns = ['Driver', 'Actual Out']
 
         merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time', 'Drive Time HHMM']], on='Driver', how='left')
-        merged = pd.merge(merged, actual_outs, on='Driver', how='left')
+        merged = pd.merge(merged, actual_outs_df, on='Driver', how='left')
         merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time'].dt.total_seconds() / 3600
         merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
 
