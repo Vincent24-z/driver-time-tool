@@ -4,9 +4,11 @@ import os
 import re
 from datetime import datetime
 import matplotlib.pyplot as plt
-from matplotlib.font_manager import FontProperties
+import matplotlib
 
-st.set_page_config(page_title="司机时间分析", layout="wide")
+# 设置默认字体避免乱码
+matplotlib.rcParams['font.family'] = 'DejaVuSans'
+
 st.title('🚚 司机每日工作/行车/空闲时间分析')
 
 uploaded_timecard = st.file_uploader('上传员工打卡记录', type=['xlsx'])
@@ -16,11 +18,7 @@ uploaded_tripreport = st.file_uploader('上传行车报告 Trip Report', type=['
 data_dir = "driver_history"
 os.makedirs(data_dir, exist_ok=True)
 
-# 初始化 session_state
-if "output_df" not in st.session_state:
-    st.session_state.output_df = None
-
-
+# 转换为 HH:MM 格式
 def to_hhmm(hours_float):
     if pd.isnull(hours_float):
         return ""
@@ -28,6 +26,7 @@ def to_hhmm(hours_float):
     minutes = int(round((hours_float - hours) * 60))
     return f"{hours}:{minutes:02d}"
 
+# 主流程
 if uploaded_timecard and uploaded_tripreport:
     if st.button("📊 分析数据"):
         timecard_df = pd.read_excel(uploaded_timecard)
@@ -55,6 +54,7 @@ if uploaded_timecard and uploaded_tripreport:
         timecard_df['Clock In'] = timecard_df['Clock In'].dt.strftime('%H:%M:%S')
         timecard_df['Clock Out'] = timecard_df['Clock Out'].dt.strftime('%H:%M:%S')
 
+        # 自动匹配含名称的列
         potential_cols = [col for col in trip_df.columns if any(key in col.lower() for key in ['name', 'email', 'driver'])]
         if not potential_cols:
             st.error("❌ 无法识别司机名称列（应包含关键词 'name'、'email' 或 'driver'），请检查行车报告文件格式。")
@@ -64,6 +64,7 @@ if uploaded_timecard and uploaded_tripreport:
             trip_df['Driver'] = trip_df[email_col].astype(str).str.split('@').str[0].str.lower().str.strip()
             trip_df = trip_df[trip_df['Driver'].isin(timecard_df['Driver'])]
 
+            # 自动识别 Driving Duration 列名
             duration_cols = [col for col in trip_df.columns if 'duration' in col.lower()]
             if not duration_cols:
                 st.error("❌ 无法识别行车时间列（应包含关键词 'duration'），请检查行车报告文件格式。")
@@ -96,13 +97,13 @@ if uploaded_timecard and uploaded_tripreport:
             if not os.path.exists(output_path):
                 output_df.to_csv(output_path, index=False)
 
-            st.session_state.output_df = output_df
             st.success(f"分析结果已保存为：{output_path}")
+            st.session_state['output_df'] = output_df
             st.dataframe(output_df)
             csv = output_df.to_csv(index=False)
             st.download_button('下载分析结果 CSV', data=csv, file_name='driver_analysis.csv')
 
-# 图表按钮
+# 图表按钮（不依赖上传文件）
 st.markdown("---")
 st.header("📊 查看历史趋势图")
 if st.button("展示司机时间趋势图"):
@@ -119,11 +120,14 @@ if st.button("展示司机时间趋势图"):
             fig, ax = plt.subplots(figsize=(10, 5))
             for driver, group in history_df.groupby("Driver"):
                 group_sorted = group.sort_values('Date')
-                y = group_sorted[metric].apply(lambda x: int(x.split(":")[0]) + int(x.split(":")[1])/60 if pd.notnull(x) else None)
-                ax.plot(group_sorted['Date'], y, label=driver)
-            ax.set_title(f"各司机每日 {metric} 趋势", fontproperties=FontProperties(fname="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"))
-            ax.set_ylabel(f"{metric} (小时)", fontproperties=FontProperties(fname="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"))
-            ax.set_xlabel("日期", fontproperties=FontProperties(fname="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"))
+                try:
+                    y = group_sorted[metric].apply(lambda x: int(x.split(":"[0])) + int(x.split(":"[1]))/60 if pd.notnull(x) else None)
+                    ax.plot(group_sorted['Date'], y, label=driver)
+                except:
+                    continue
+            ax.set_title(f"{metric} 趋势图")
+            ax.set_ylabel("小时")
+            ax.set_xlabel("日期")
             ax.legend()
             st.pyplot(fig)
     else:
