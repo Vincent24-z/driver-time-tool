@@ -25,7 +25,6 @@ if uploaded_timecard and uploaded_tripreport:
     timecard_df = pd.read_excel(uploaded_timecard)
     trip_df = pd.read_excel(uploaded_tripreport)
 
-    # 保留需要字段，避免缺失空数据
     timecard_df = timecard_df[['Employee', 'Time In', 'Time Out']].dropna(subset=['Time In', 'Time Out'])
     timecard_df['Driver'] = timecard_df['Employee'].str.lower().str.strip()
 
@@ -72,7 +71,6 @@ if uploaded_timecard and uploaded_tripreport:
     output_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].copy()
     output_df.columns = ['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time', 'Idle Time']
 
-    # 保存历史记录（避免重复覆盖）
     today_str = datetime.today().strftime('%Y-%m-%d')
     output_path = os.path.join(data_dir, f"{today_str}_driver_analysis.csv")
     if not os.path.exists(output_path):
@@ -83,26 +81,29 @@ if uploaded_timecard and uploaded_tripreport:
     csv = output_df.to_csv(index=False)
     st.download_button('下载分析结果 CSV', data=csv, file_name='driver_analysis.csv')
 
-    # 图表分析按钮
-    if st.button("📊 展示司机时间趋势图"):
-        all_files = [f for f in os.listdir(data_dir) if f.endswith("_driver_analysis.csv")]
-        dfs = []
-        for f in all_files:
-            df = pd.read_csv(os.path.join(data_dir, f))
-            df['Date'] = f.split('_')[0]
-            dfs.append(df)
-        if dfs:
-            history_df = pd.concat(dfs)
-            for metric in ['Working Hours', 'Drive Time', 'Idle Time']:
-                fig, ax = plt.subplots(figsize=(10, 5))
-                for driver, group in history_df.groupby("Driver"):
-                    group_sorted = group.sort_values('Date')
-                    y = group_sorted[metric].apply(lambda x: int(x.split(":")[0]) + int(x.split(":")[1])/60 if pd.notnull(x) else None)
-                    ax.plot(group_sorted['Date'], y, label=driver)
-                ax.set_title(f"各司机每日{metric}趋势")
-                ax.set_ylabel(f"{metric} (小时)")
-                ax.set_xlabel("日期")
-                ax.legend()
-                st.pyplot(fig)
-        else:
-            st.warning("暂无历史记录可供分析。")
+# 图表按钮（不依赖上传文件）
+st.markdown("---")
+st.header("📊 查看历史趋势图")
+if st.button("展示司机时间趋势图"):
+    all_files = [f for f in os.listdir(data_dir) if f.endswith("_driver_analysis.csv")]
+    dfs = []
+    for f in all_files:
+        df = pd.read_csv(os.path.join(data_dir, f))
+        df['Date'] = f.split('_')[0]
+        dfs.append(df)
+
+    if dfs:
+        history_df = pd.concat(dfs)
+        for metric in ['Working Hours', 'Drive Time', 'Idle Time']:
+            fig, ax = plt.subplots(figsize=(10, 5))
+            for driver, group in history_df.groupby("Driver"):
+                group_sorted = group.sort_values('Date')
+                y = group_sorted[metric].apply(lambda x: int(x.split(":")[0]) + int(x.split(":")[1])/60 if pd.notnull(x) else None)
+                ax.plot(group_sorted['Date'], y, label=driver)
+            ax.set_title(f"各司机每日 {metric} 趋势")
+            ax.set_ylabel(f"{metric} (小时)")
+            ax.set_xlabel("日期")
+            ax.legend()
+            st.pyplot(fig)
+    else:
+        st.warning("暂无历史记录可供分析。")
