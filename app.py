@@ -58,6 +58,13 @@ if uploaded_timecard and uploaded_tripreport:
             trip_df['Driver'] = trip_df[email_col].astype(str).str.split('@').str[0].str.lower().str.strip()
             trip_df = trip_df[trip_df['Driver'].isin(timecard_df['Driver'])]
 
+            # 自动识别 Driving Duration 列名
+            duration_cols = [col for col in trip_df.columns if 'duration' in col.lower()]
+            if not duration_cols:
+                st.error("❌ 无法识别行车时间列（应包含关键词 'duration'），请检查行车报告文件格式。")
+                st.stop()
+            duration_col = duration_cols[0]
+
             def extract_duration(duration):
                 if pd.isnull(duration):
                     return pd.NaT
@@ -67,7 +74,7 @@ if uploaded_timecard and uploaded_tripreport:
                     return pd.to_timedelta(f"{h}:{m}:00")
                 return pd.NaT
 
-            trip_df['Drive Time'] = trip_df['Driving Duration'].apply(extract_duration)
+            trip_df['Drive Time'] = trip_df[duration_col].apply(extract_duration)
             trip_df = trip_df.dropna(subset=['Drive Time'])
             trip_df = trip_df.drop_duplicates(subset='Driver')
             trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}")
