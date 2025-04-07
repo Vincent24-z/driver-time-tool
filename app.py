@@ -74,7 +74,7 @@ if uploaded_timecard and uploaded_tripreport:
         def extract_duration(duration):
             if pd.isnull(duration):
                 return pd.NaT
-            match = re.search(r'(\d+):(\d+)', str(duration))
+            match = re.search(r'(\\d+):(\\d+)', str(duration))
             if match:
                 h, m = int(match.group(1)), int(match.group(2))
                 return pd.to_timedelta(f"{h}:{m}:00")
@@ -83,15 +83,13 @@ if uploaded_timecard and uploaded_tripreport:
         trip_df['Drive Time'] = trip_df[duration_col].apply(extract_duration)
         trip_df = trip_df.dropna(subset=['Drive Time'])
 
-        actual_outs_series = trip_df.groupby('Driver').apply(extract_actual_out)
-        actual_outs_series.name = 'Actual Out'
-        actual_outs_df = actual_outs_series.reset_index()
+        actual_outs_series = trip_df.groupby('Driver').apply(lambda df: extract_actual_out(df)).reset_index(name='Actual Out')
 
         trip_summary = trip_df.groupby('Driver')['Drive Time'].sum().reset_index()
         trip_summary['Drive Time HHMM'] = trip_summary['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}")
 
         merged = pd.merge(timecard_df, trip_summary, on='Driver', how='left')
-        merged = pd.merge(merged, actual_outs_df, on='Driver', how='left')
+        merged = pd.merge(merged, actual_outs_series, on='Driver', how='left')
         merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time'].dt.total_seconds() / 3600
         merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
 
