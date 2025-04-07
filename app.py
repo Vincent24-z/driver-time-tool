@@ -48,39 +48,44 @@ if uploaded_timecard and uploaded_tripreport:
         timecard_df['Clock In'] = timecard_df['Clock In'].dt.strftime('%H:%M:%S')
         timecard_df['Clock Out'] = timecard_df['Clock Out'].dt.strftime('%H:%M:%S')
 
-        trip_df['Driver'] = trip_df['Name'].str.split('@').str[0].str.lower().str.strip()
-        trip_df = trip_df[trip_df['Driver'].isin(timecard_df['Driver'])]
+        # 自动匹配含名称的列
+        email_col = next((col for col in trip_df.columns if 'name' in col.lower() or 'email' in col.lower()), None)
+        if email_col is None:
+            st.error("找不到包含司机名称的列，请确认行车报告中包含类似 'Name' 或 'Email' 的列。")
+        else:
+            trip_df['Driver'] = trip_df[email_col].str.split('@').str[0].str.lower().str.strip()
+            trip_df = trip_df[trip_df['Driver'].isin(timecard_df['Driver'])]
 
-        def extract_duration(duration):
-            if pd.isnull(duration):
+            def extract_duration(duration):
+                if pd.isnull(duration):
+                    return pd.NaT
+                match = re.search(r'(\d+):(\d+)', str(duration))
+                if match:
+                    h, m = int(match.group(1)), int(match.group(2))
+                    return pd.to_timedelta(f"{h}:{m}:00")
                 return pd.NaT
-            match = re.search(r'(\d+):(\d+)', str(duration))
-            if match:
-                h, m = int(match.group(1)), int(match.group(2))
-                return pd.to_timedelta(f"{h}:{m}:00")
-            return pd.NaT
 
-        trip_df['Drive Time'] = trip_df['Driving Duration'].apply(extract_duration)
-        trip_df = trip_df.dropna(subset=['Drive Time'])
-        trip_df = trip_df.drop_duplicates(subset='Driver')
-        trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}")
+            trip_df['Drive Time'] = trip_df['Driving Duration'].apply(extract_duration)
+            trip_df = trip_df.dropna(subset=['Drive Time'])
+            trip_df = trip_df.drop_duplicates(subset='Driver')
+            trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}")
 
-        merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time', 'Drive Time HHMM']], on='Driver', how='left')
-        merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time'].dt.total_seconds() / 3600
-        merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
+            merged = pd.merge(timecard_df, trip_df[['Driver', 'Drive Time', 'Drive Time HHMM']], on='Driver', how='left')
+            merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time'].dt.total_seconds() / 3600
+            merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
 
-        output_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].copy()
-        output_df.columns = ['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time', 'Idle Time']
+            output_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].copy()
+            output_df.columns = ['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time', 'Idle Time']
 
-        today_str = datetime.today().strftime('%Y-%m-%d')
-        output_path = os.path.join(data_dir, f"{today_str}_driver_analysis.csv")
-        if not os.path.exists(output_path):
-            output_df.to_csv(output_path, index=False)
+            today_str = datetime.today().strftime('%Y-%m-%d')
+            output_path = os.path.join(data_dir, f"{today_str}_driver_analysis.csv")
+            if not os.path.exists(output_path):
+                output_df.to_csv(output_path, index=False)
 
-        st.success(f"分析结果已保存为：{output_path}")
-        st.dataframe(output_df)
-        csv = output_df.to_csv(index=False)
-        st.download_button('下载分析结果 CSV', data=csv, file_name='driver_analysis.csv')
+            st.success(f"分析结果已保存为：{output_path}")
+            st.dataframe(output_df)
+            csv = output_df.to_csv(index=False)
+            st.download_button('下载分析结果 CSV', data=csv, file_name='driver_analysis.csv')
 
 # 图表按钮（不依赖上传文件）
 st.markdown("---")
