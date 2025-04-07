@@ -32,37 +32,37 @@ if uploaded_timecard and uploaded_tripreport:
 
     timecard_df['Driver'] = timecard_df['Employee'].str.lower().str.strip().replace(name_mapping)
 
-    # 转换时间并保留完整打卡记录
-    timecard_df['Clock In'] = pd.to_datetime(timecard_df['Time In'], format='%H:%M:%S', errors='coerce')
-    timecard_df['Clock Out'] = pd.to_datetime(timecard_df['Time Out'], format='%H:%M:%S', errors='coerce')
+    # 转换时间
+    timecard_df['Clock In'] = pd.to_datetime(timecard_df['Time In'], errors='coerce').dt.strftime('%H:%M:%S')
+    timecard_df['Clock Out'] = pd.to_datetime(timecard_df['Time Out'], errors='coerce').dt.strftime('%H:%M:%S')
+
+    # 去除没有有效 Clock In 或 Clock Out 的记录
     valid_timecard_df = timecard_df.dropna(subset=['Clock In', 'Clock Out'])
 
-    # 按 Driver 和 Clock In 排序后，保留每位司机第一条完整记录
-    valid_timecard_df = valid_timecard_df.sort_values(by=['Driver', 'Clock In'])
-    valid_timecard_df = valid_timecard_df.drop_duplicates(subset='Driver', keep='first')
+    # 解析为 datetime 格式用于计算
+    timecard_dt = valid_timecard_df.copy()
+    timecard_dt['Clock In'] = pd.to_datetime(timecard_dt['Clock In'], format='%H:%M:%S')
+    timecard_dt['Clock Out'] = pd.to_datetime(timecard_dt['Clock Out'], format='%H:%M:%S')
 
     # 计算工时
-    valid_timecard_df['Working Hours Float'] = (valid_timecard_df['Clock Out'] - valid_timecard_df['Clock In']).dt.total_seconds() / 3600
-    valid_timecard_df['Working Hours'] = valid_timecard_df['Working Hours Float'].apply(to_hhmm)
+    timecard_dt['Working Hours Float'] = (timecard_dt['Clock Out'] - timecard_dt['Clock In']).dt.total_seconds() / 3600
+    timecard_dt['Working Hours'] = timecard_dt['Working Hours Float'].apply(to_hhmm)
 
-    # 处理 Drive Time（转为 HH:MM）
+    # 处理 Drive Time
     trip_df['Drive Time'] = pd.to_timedelta(trip_df['Driving Duration'], errors='coerce')
     trip_df = trip_df.dropna(subset=['Drive Time'])
     trip_df = trip_df.drop_duplicates(subset='Driver')
     trip_df['Drive Time HHMM'] = trip_df['Drive Time'].apply(lambda x: f"{int(x.total_seconds() // 3600)}:{int((x.total_seconds() % 3600) // 60):02d}")
 
-    # 合并数据
-    merged = pd.merge(valid_timecard_df, trip_df[['Driver', 'Drive Time', 'Drive Time HHMM']], on='Driver', how='left')
+    # 合并
+    merged = pd.merge(timecard_dt, trip_df[['Driver', 'Drive Time', 'Drive Time HHMM']], on='Driver', how='left')
     merged['Idle Time Float'] = merged['Working Hours Float'] - merged['Drive Time'].dt.total_seconds() / 3600
     merged['Idle Time'] = merged['Idle Time Float'].apply(to_hhmm)
 
-    # 清理展示字段
-    merged['Clock In'] = merged['Clock In'].dt.strftime('%H:%M:%S')
-    merged['Clock Out'] = merged['Clock Out'].dt.strftime('%H:%M:%S')
-
+    # 展示
     st.dataframe(merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']])
 
-    # 导出结果
+    # 导出
     output_df = merged[['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time HHMM', 'Idle Time']].copy()
     output_df.columns = ['Driver', 'Clock In', 'Clock Out', 'Working Hours', 'Drive Time', 'Idle Time']
     csv = output_df.to_csv(index=False)
