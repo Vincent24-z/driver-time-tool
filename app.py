@@ -5,10 +5,10 @@ import re
 from datetime import datetime
 import matplotlib.pyplot as plt
 
-st.title('🚚 司机每日工作/行车/空闲时间分析')
+st.title('🚚 Driver Daily Work/Driving/Idle Time Analysis')
 
-uploaded_timecard = st.file_uploader('上传员工打卡记录', type=['xlsx'])
-uploaded_tripreport = st.file_uploader('上传行车报告 Trip Report', type=['xlsx'])
+uploaded_timecard = st.file_uploader('Upload Employee Time Clock Records', type=['xlsx'])
+uploaded_tripreport = st.file_uploader(' Upload Driving Logs Trip Report', type=['xlsx'])
 
 # 存储数据的文件夹路径
 data_dir = "driver_history"
@@ -31,7 +31,7 @@ def extract_actual_out(df):
     return pd.NaT
 
 if uploaded_timecard and uploaded_tripreport:
-    if st.button("📊 分析数据"):
+    if st.button("📊 Data Analysis"):
         timecard_df = pd.read_excel(uploaded_timecard)
         trip_df = pd.read_excel(uploaded_tripreport)
 
